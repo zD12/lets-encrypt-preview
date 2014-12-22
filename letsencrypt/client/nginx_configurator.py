@@ -1,5 +1,8 @@
-from letsencrypt.client import CONFIG
+import zope.interface
+
 from letsencrypt.client import augeas_configurator
+from letsencrypt.client import CONFIG
+from letsencrypt.client import interfaces
 
 
 # This might be helpful... but feel free to use whatever you want
@@ -19,6 +22,8 @@ from letsencrypt.client import augeas_configurator
 #         self.names.append(name)
 
 class NginxConfigurator(augeas_configurator.AugeasConfigurator):
+    """Nginx Configurator class."""
+    zope.interface.implements(interfaces.IAuthenticator, interfaces.IInstaller)
 
     def __init__(self, server_root=CONFIG.SERVER_ROOT):
         super(NginxConfigurator, self).__init__()
