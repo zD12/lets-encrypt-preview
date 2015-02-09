@@ -50,9 +50,7 @@ def pack_3bytes(value):
     return struct.pack(">I", value)[1:]
 
 
-# Exclude this function from coverage testing because it is currently
-# not used.
-def tls_parse_client_hello(tls_record):  # pragma: no cover
+def tls_parse_client_hello(tls_record):
     # pylint: disable=too-many-return-statements,too-many-locals,bad-builtin
     # pylint: disable=too-many-branches
     """If possible, parse the specified TLS record as a ClientHello and
@@ -373,48 +371,30 @@ class StandaloneAuthenticator(object):
         while True:
             self.connection, _ = self.sock.accept()
 
-            # The code below uses the PyOpenSSL bindings to respond to
-            # the client.  This may expose us to bugs and vulnerabilities
-            # in OpenSSL (and creates additional dependencies).
-            ctx = OpenSSL.SSL.Context(OpenSSL.SSL.TLSv1_METHOD)
-            ctx.set_verify(OpenSSL.SSL.VERIFY_NONE, lambda: False)
-            pem_cert = self.tasks.values()[0]
-            first_cert = OpenSSL.crypto.load_certificate(
-                OpenSSL.crypto.FILETYPE_PEM, pem_cert)
-            ctx.use_certificate(first_cert)
-            ctx.use_privatekey(self.private_key)
-            ctx.set_cipher_list("HIGH")
-            ctx.set_tlsext_servername_callback(self.sni_callback)
-            self.ssl_conn = OpenSSL.SSL.Connection(ctx, self.connection)
-            self.ssl_conn.set_accept_state()
-            self.ssl_conn.do_handshake()
-            self.ssl_conn.shutdown()
-            self.ssl_conn.close()
-
             # The code below uses the minimal pure Python implementation
             # of TLS ClientHello, ServerHello, and Certificate messages
             # (as an alternative to a full TLS implementation).  It will
             # not reach Finished state with a compliant TLS implementation.
-            #
-            # client_hello = self.connection.recv(65536)
-            # result = tls_parse_client_hello(client_hello)
-            # if result is None:
-            #    print "No SNI found in ClientHello, dropping connection"
-            #    self.connection.close()
-            #    continue
-            # ciphersuite, sni = result
-            # if sni in self.tasks:
-            #     pem_cert = self.tasks[sni]
-            # else:
-            #     # We don't know which cert to send!
-            #     print "Unexpected SNI value", sni
-            #     # Choose the "first" cert and send it (but maybe we
-            #     # should just disconnect instead?)
-            #     pem_cert = self.tasks.values()[0]
-            # self.connection.send(tls_generate_server_hello(ciphersuite))
-            # self.connection.send(tls_generate_cert_msg(pem_cert))
-            # self.connection.send(tls_generate_server_hello_done())
-            # self.connection.close()
+
+            client_hello = self.connection.recv(65536)
+            result = tls_parse_client_hello(client_hello)
+            if result is None:
+               print "No SNI found in ClientHello, dropping connection"
+               self.connection.close()
+               continue
+            ciphersuite, sni = result
+            if sni in self.tasks:
+                pem_cert = self.tasks[sni]
+            else:
+                # We don't know which cert to send!
+                print "Unexpected SNI value", sni
+                # Choose the "first" cert and send it (but maybe we
+                # should just disconnect instead?)
+                pem_cert = self.tasks.values()[0]
+            self.connection.send(tls_generate_server_hello(ciphersuite))
+            self.connection.send(tls_generate_cert_msg(pem_cert))
+            self.connection.send(tls_generate_server_hello_done())
+            self.connection.close()
 
     def start_listener(self, port, key):
         """Create a child process which will start a TCP listener on the
