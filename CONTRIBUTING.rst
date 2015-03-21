@@ -112,7 +112,8 @@ Please:
 
 1. **Be consistent with the rest of the code**.
 
-2. Read `PEP 8 - Style Guide for Python Code`_.
+2. Read `PEP 8 - Style Guide for Python Code`_; we use the variant with
+100-character lines.
 
 3. Follow the `Google Python Style Guide`_, with the exception that we
    use `Sphinx-style`_ documentation:
