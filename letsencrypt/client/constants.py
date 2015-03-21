@@ -23,7 +23,13 @@ enhancements.
 
 List of expected options parameters:
 - redirect: None
-- http-header: TODO
+- http-header:
+    - header, the name of the HTTP response header to set
+    - value, the value of the HTTP response header to set
+    - headercondition, a regexp; only send response header if the request
+      headers match headercondition
+    TODO support pass-through of webservers' built in User Agent detection
+    interfaces
 - ocsp-stapling: TODO
 - spdy: TODO
 
