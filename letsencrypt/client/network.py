@@ -34,8 +34,8 @@ class Network(object):
         :param msg: ACME message.
         :type msg: :class:`letsencrypt.acme.messages.Message`
 
-        :returns: Server response message.
-        :rtype: :class:`letsencrypt.acme.messages.Message`
+        :returns: tuple of the form (Server response message, list of next resources)
+        :rtype: `tuple` of class:`letsencrypt.acme.messages.Message`, `list`
 
         :raises letsencrypt.acme.errors.ValidationError: if `msg` is not
             valid serializable ACME JSON message.
@@ -48,6 +48,8 @@ class Network(object):
                 self.server_url,
                 data=msg.json_dumps(),
                 headers={"Content-Type": "application/json"},
+                # TODO add server cert pinning here
+                # http://docs.python-requests.org/en/latest/user/advanced/#ssl-cert-verification
                 verify=True
             )
         except requests.exceptions.RequestException as error:
@@ -55,6 +57,8 @@ class Network(object):
                 'Sending ACME message to server has failed: %s' % error)
 
         json_string = response.json()
+        # requests merges repeated Link: headers; unmerge them
+        link_headers = response.headers["Link"].split(",")
         try:
             return messages.Message.from_json(json_string)
         except jose.DeserializationError as error:
@@ -73,7 +77,8 @@ class Network(object):
         :raises errors.LetsEncryptClientError: An exception is thrown
 
         """
-        response = self.send(msg)
+        response, next_list = self.send(msg)
+        # TODO check that next_list is as expected, or follow it
         return self.is_expected_msg(response, expected)
 
 
