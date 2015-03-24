@@ -7,6 +7,8 @@ import Crypto.PublicKey.RSA
 import M2Crypto
 
 from letsencrypt.acme import messages
+from letsencrypt.acme import messages2
+from letsencrypt.acme.jose import b64
 from letsencrypt.acme.jose import util as jose_util
 
 from letsencrypt.client import auth_handler
@@ -54,7 +56,7 @@ class Client(object):
         :type dv_auth: :class:`letsencrypt.client.interfaces.IAuthenticator`
 
         """
-        self.network = network.Network(config.server)
+        self.network = network.Network(authkey.pem)
         self.authkey = authkey
         self.installer = installer
         self.config = config
@@ -82,6 +84,7 @@ class Client(object):
         if self.auth_handler is None:
             logging.warning("Unable to obtain a certificate, because client "
                             "does not have a valid auth handler.")
+            return
 
         # Request Challenges
         for name in domains:
@@ -89,14 +92,14 @@ class Client(object):
                 name, self.acme_challenge(name), self.authkey)
 
         # Perform Challenges/Get Authorizations
-        self.auth_handler.get_authorizations()
+        auth_resources = self.auth_handler.get_authorizations()
 
         # Create CSR from names
         if csr is None:
             csr = init_csr(self.authkey, domains, self.config.cert_dir)
 
         # Retrieve certificate
-        certificate_msg = self.acme_certificate(csr.data)
+        certificate_msg = self.acme_certificate(csr.data, auth_resources)
 
         # Save Certificate
         cert_file, chain_file = self.save_certificate(
@@ -110,30 +113,49 @@ class Client(object):
     def acme_challenge(self, domain):
         """Handle ACME "challenge" phase.
 
-        :returns: ACME "challenge" message.
-        :rtype: :class:`letsencrypt.acme.messages.Challenge`
+        :returns: ACME "Authorization" resource.
+        :rtype: :class:`letsencrypt.acme.messages.Resource`
 
         """
-        return self.network.send_and_receive_expected(
-            messages.ChallengeRequest(identifier=domain),
-            messages.Challenge)
+        # return self.network.send_and_receive_expected(
+        #    messages.ChallengeRequest(identifier=domain),
+        #   messages.Challenge)
 
-    def acme_certificate(self, csr_der):
+        # TODO: Verify that authorization resource is received
+        return self.network.send(
+            messages2.Resource(
+                body=messages2.Authorization(
+                    identifier=messages2.Identifier(
+                    typ=messages2.Identifier.FQDN, value="example1.com")),
+                location="https://%s/acme/new-authz" % self.config.server))
+
+    def acme_certificate(self, csr_der, authz):
         """Handle ACME "certificate" phase.
 
         :param str csr_der: CSR in DER format.
+        :param authz: authz links... will need to be cleaned up
 
         :returns: ACME "certificate" message.
         :rtype: :class:`letsencrypt.acme.message.Certificate`
 
         """
         logging.info("Preparing and sending CSR...")
-        return self.network.send_and_receive_expected(
-            messages.CertificateRequest.create(
-                csr=jose_util.ComparableX509(
-                    M2Crypto.X509.load_request_der_string(csr_der)),
-                key=Crypto.PublicKey.RSA.importKey(self.authkey.pem)),
-            messages.Certificate)
+        # return self.network.send_and_receive_expected(
+        #     messages.CertificateRequest.create(
+        #         csr=jose_util.ComparableX509(
+        #             M2Crypto.X509.load_request_der_string(csr_der)),
+        #         key=Crypto.PublicKey.RSA.importKey(self.authkey.pem)),
+        #     messages.Certificate)
+        new_cert = messages2.NewCertificate(
+            csr=jose_util.ComparableX509(
+                M2Crypto.X509.load_request_der_string(csr_der)),
+            authorizations=tuple([res.location for res in authz]))
+
+        return self.network.send(
+            messages2.Resource(
+                body=new_cert,
+                location="https://%s/acme/new-cert" % self.config.server),
+            "pkix")
 
     def save_certificate(self, certificate_msg, cert_path, chain_path):
         # pylint: disable=no-self-use

@@ -1,4 +1,5 @@
 """ACME protocol v02 messages."""
+import json
 import jsonschema
 
 from letsencrypt.acme import challenges
@@ -10,6 +11,7 @@ from letsencrypt.acme import util
 
 class Resource(jose.JSONObjectWithFields):
     """ACME Resource."""
+    __slots__ = ('body', 'location')
 
 
 class Error(object):
@@ -82,6 +84,7 @@ class ChallengeWithMeta(jose.JSONObjectWithFields):
         fields['body'] = challenges.Challenge.from_json(jobj)
         return fields
 
+
 class Authorization(Resource):
     class Status(object):
         VALID = frozenset(['pending', 'valid', 'invalid'])
@@ -129,7 +132,6 @@ class Authorization(Resource):
 
 class NewCertificate(Resource):
     """ACME new certificate resource request."""
-
     csr = jose.Field('csr', decoder=jose.decode_csr, encoder=jose.encode_csr)
     authorizations = jose.Field('authorizations', decoder=tuple)
 
@@ -137,3 +139,14 @@ class NewCertificate(Resource):
 class Revocation(Resource):
     revoke = jose.Field('revoke')
     authorizations = NewCertificate.authorizations
+
+
+# This is a temporary hack for Boulder compatibility
+# All uses of it should be replaced with appropriate specific classes for the
+# message in question.
+class HackedMsg(object):
+    def __init__(self, dikt):
+        self.msg = dikt
+
+    def json_dumps(self):
+        return json.dumps(self.msg)

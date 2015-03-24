@@ -36,7 +36,7 @@ def create_parser():
     config_help = lambda name: interfaces.IConfig[name].__doc__
 
     add("-d", "--domains", metavar="DOMAIN", nargs="+")
-    add("-s", "--server", default="letsencrypt-demo.org:443",
+    add("-s", "--server", default="www.letsencrypt-demo.org:443",
         help=config_help("server"))
 
     add("-k", "--authkey", type=read_file,

@@ -5,7 +5,7 @@ import sys
 import Crypto.PublicKey.RSA
 
 from letsencrypt.acme import challenges
-from letsencrypt.acme import messages
+from letsencrypt.acme import messages2
 
 from letsencrypt.client import achallenges
 from letsencrypt.client import constants
@@ -32,11 +32,12 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
         values are of type :class:`letsencrypt.client.le_util.Key`
     :ivar dict responses: keys: domain, values: list of responses
         (:class:`letsencrypt.acme.challenges.ChallengeResponse`.
-    :ivar dict msgs: ACME Challenge messages with domain as a key.
+    :ivar dict msgs: ACME Authorization resources with domain as a key.
     :ivar dict paths: optimal path for authorization. eg. paths[domain]
     :ivar dict dv_c: Keys - domain, Values are DV challenges in the form of
         :class:`letsencrypt.client.achallenges.Indexed`
-    :ivar dict client_c: Keys - domain, Values are Client challenges in the form
+    :ivar dict client_c: Keys - domain, Values are Client challenges
+        in the form
         of :class:`letsencrypt.client.achallenges.Indexed`
 
     """
@@ -48,19 +49,19 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
         self.domains = []
         self.authkey = dict()
         self.responses = dict()
-        self.msgs = dict()
+        self.auth_res = dict()
         self.paths = dict()
 
         self.dv_c = dict()
         self.client_c = dict()
 
-    def add_chall_msg(self, domain, msg, authkey):
+    def add_chall_msg(self, domain, auth_res, authkey):
         """Add a challenge message to the AuthHandler.
 
         :param str domain: domain for authorization
 
-        :param msg: ACME "challenge" message
-        :type msg: :class:`letsencrypt.acme.message.Challenge`
+        :param auth_res: ACME "Authorization" resource
+        :type auth_res: :class:`letsencrypt.acme.message2.Resource`
 
         :param authkey: authorized key for the challenge
         :type authkey: :class:`letsencrypt.client.le_util.Key`
@@ -71,19 +72,23 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
                 "Multiple ACMEChallengeMessages for the same domain "
                 "is not supported.")
         self.domains.append(domain)
-        self.responses[domain] = [None] * len(msg.challenges)
-        self.msgs[domain] = msg
+        self.responses[domain] = [None] * len(auth_res.body.challenges)
+        self.auth_res[domain] = auth_res
         self.authkey[domain] = authkey
 
     def get_authorizations(self):
-        """Retreive all authorizations for challenges.
+        """Retrieve all authorizations for challenges.
+
+        :returns: List of authorization resources attained.
+        :rtype: `list` of messages2.Authorizations
 
         :raises LetsEncryptAuthHandlerError: If unable to retrieve all
             authorizations
 
         """
         progress = True
-        while self.msgs and progress:
+
+        while self.domains and progress:
             progress = False
             self._satisfy_challenges()
 
@@ -91,7 +96,7 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
 
             for dom in self.domains:
                 if self._path_satisfied(dom):
-                    self.acme_authorization(dom)
+                    self._acme_authorization(dom)
                     delete_list.append(dom)
 
             # This avoids modifying while iterating over the list
@@ -103,34 +108,40 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
             raise errors.LetsEncryptAuthHandlerError(
                 "Unable to solve challenges for requested names.")
 
-    def acme_authorization(self, domain):
+        return [msg for msg in self.auth_res.itervalues()]
+
+    def _acme_authorization(self, dom):
         """Handle ACME "authorization" phase.
 
-        :param str domain: domain that is requesting authorization
-
-        :returns: ACME "authorization" message.
-        :rtype: :class:`letsencrypt.acme.messages.Authorization`
+        :param str dom: domain that is requesting authorization
 
         """
         try:
-            auth = self.network.send_and_receive_expected(
-                messages.AuthorizationRequest.create(
-                    session_id=self.msgs[domain].session_id,
-                    nonce=self.msgs[domain].nonce,
-                    responses=self.responses[domain],
-                    name=domain,
-                    key=Crypto.PublicKey.RSA.importKey(
-                        self.authkey[domain].pem)),
-                messages.Authorization)
-            logging.info("Received Authorization for %s", domain)
-            return auth
+            for i, resp in enumerate(self.responses[dom]):
+                # This checks to make sure that it isn't False or None...
+                # This API should be refactored
+                if resp:
+                    print self.auth_res[dom].body.challenges[i].uri
+                    self.network.send(
+                        messages2.Resource(
+                            body=resp,
+                            location=self.auth_res[dom].body.challenges[i].uri),
+                        "nothing")
+
+            success = self.network.wait_for_auth(self.auth_res[dom].location)
+
+            logging.info("Received Authorization for %s", dom)
         except errors.LetsEncryptClientError as err:
             logging.fatal(str(err))
             logging.fatal(
                 "Failed Authorization procedure - cleaning up challenges")
             sys.exit(1)
         finally:
-            self._cleanup_challenges(domain)
+            self._cleanup_challenges(dom)
+
+        # TODO: Validate that status changes to verified,
+        # self.auth_res[dom].link
+
 
     def _satisfy_challenges(self):
         """Attempt to satisfy all saved challenge messages.
@@ -143,9 +154,10 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
         logging.info("Performing the following challenges:")
         for dom in self.domains:
             self.paths[dom] = gen_challenge_path(
-                self.msgs[dom].challenges,
+                # TODO: Fix hack to get around new ChallengeMeta objects
+                [chall.body for chall in self.auth_res[dom].body.challenges],
                 self._get_chall_pref(dom),
-                self.msgs[dom].combinations)
+                self.auth_res[dom].body.combinations)
 
             self.dv_c[dom], self.client_c[dom] = self._challenge_factory(
                 dom, self.paths[dom])
@@ -162,6 +174,7 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
 
         client_resp = []
         dv_resp = []
+
         try:
             if flat_client:
                 client_resp = self.client_auth.perform(flat_client)
@@ -240,7 +253,6 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
 
         """
         for domain in delete_list:
-            del self.msgs[domain]
             del self.responses[domain]
             del self.paths[domain]
 
@@ -272,7 +284,7 @@ class AuthHandler(object):  # pylint: disable=too-many-instance-attributes
         client_chall = []
 
         for index in path:
-            chall = self.msgs[domain].challenges[index]
+            chall = self.auth_res[domain].body.challenges[index].body
 
             if isinstance(chall, challenges.DVSNI):
                 logging.info("  DVSNI challenge for %s.", domain)
@@ -348,7 +360,8 @@ def _find_smart_path(challs, preferences, combinations):
 
     """
     chall_cost = {}
-    max_cost = 0
+    # Make sure max_cost is above single challenge combo
+    max_cost = 1
     for i, chall_cls in enumerate(preferences):
         chall_cost[chall_cls] = i
         max_cost += i
@@ -365,7 +378,8 @@ def _find_smart_path(challs, preferences, combinations):
         if combo_total < best_combo_cost:
             best_combo = combo
             best_combo_cost = combo_total
-            combo_total = 0
+
+        combo_total = 0
 
     if not best_combo:
         logging.fatal("Client does not support any combination of "

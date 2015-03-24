@@ -216,7 +216,7 @@ class JSONObjectWithFields(util.ImmutableMap, interfaces.JSONDeSerializable):
             value = getattr(self, slot)
 
             if field.omit(value):
-                logging.debug('Ommiting empty field "%s" (%s)', slot, value)
+                logging.debug('Omitting empty field "%s" (%s)', slot, value)
             else:
                 try:
                     jobj[field.json_name] = field.encode(value)
@@ -372,11 +372,9 @@ class TypedJSONObjectWithFields(JSONObjectWithFields):
             raise errors.DeserializationError("missing type field")
 
         try:
-            type_cls = cls.TYPES[typ]
+             return cls.TYPES[typ]
         except KeyError:
             raise errors.UnrecognizedTypeError(typ, jobj)
-
-        return type_cls
 
     def to_json(self):
         """Get JSON serializable object.
