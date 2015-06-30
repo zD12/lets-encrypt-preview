@@ -6,7 +6,7 @@ import re
 import configobj
 import zope.component
 
-from acme import messages2
+from acme import messages
 
 from letsencrypt import crypto_util
 from letsencrypt import errors
@@ -14,6 +14,9 @@ from letsencrypt import interfaces
 from letsencrypt import le_util
 
 from letsencrypt.display import util as display_util
+
+
+logger = logging.getLogger(__name__)
 
 
 class Account(object):
@@ -28,7 +31,7 @@ class Account(object):
     :ivar str phone: Client's phone number
 
     :ivar regr: Registration Resource
-    :type regr: :class:`~acme.messages2.RegistrationResource`
+    :type regr: :class:`~acme.messages.RegistrationResource`
 
     """
 
@@ -127,7 +130,7 @@ class Account(object):
             acc_config = configobj.ConfigObj(
                 infile=config_fp, file_error=True, create_empty=False)
         except IOError:
-            raise errors.LetsEncryptClientError(
+            raise errors.Error(
                 "Account for %s does not exist" % os.path.basename(config_fp))
 
         if os.path.basename(config_fp) != "default":
@@ -141,11 +144,11 @@ class Account(object):
 
         if "RegistrationResource" in acc_config:
             acc_config_rr = acc_config["RegistrationResource"]
-            regr = messages2.RegistrationResource(
+            regr = messages.RegistrationResource(
                 uri=acc_config_rr["uri"],
                 new_authzr_uri=acc_config_rr["new_authzr_uri"],
                 terms_of_service=acc_config_rr["terms_of_service"],
-                body=messages2.Registration.from_json(acc_config_rr["body"]))
+                body=messages.Registration.from_json(acc_config_rr["body"]))
         else:
             regr = None
 
@@ -191,7 +194,7 @@ class Account(object):
             if code == display_util.OK:
                 try:
                     return cls.from_email(config, email)
-                except errors.LetsEncryptClientError:
+                except errors.Error:
                     continue
             else:
                 return None
@@ -205,8 +208,7 @@ class Account(object):
 
         :param str email: Email address
 
-        :raises letsencrypt.errors.LetsEncryptClientError: If invalid
-            email address is given.
+        :raises .errors.Error: If invalid email address is given.
 
         """
         if not email or cls.safe_email(email):
@@ -219,7 +221,7 @@ class Account(object):
                 cls._get_config_filename(email))
             return cls(config, key, email)
 
-        raise errors.LetsEncryptClientError("Invalid email address.")
+        raise errors.Error("Invalid email address.")
 
     @classmethod
     def safe_email(cls, email):
@@ -227,5 +229,5 @@ class Account(object):
         if cls.EMAIL_REGEX.match(email):
             return not email.startswith(".") and ".." not in email
         else:
-            logging.warn("Invalid email address.")
+            logger.warn("Invalid email address: %s.", email)
             return False

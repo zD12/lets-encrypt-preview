@@ -51,8 +51,7 @@ class DvsniPerformTest(util.NginxTest):
         super(DvsniPerformTest, self).setUp()
 
         config = util.get_nginx_configurator(
-            self.config_path, self.config_dir, self.work_dir,
-            self.ssl_options)
+            self.config_path, self.config_dir, self.work_dir)
 
         from letsencrypt_nginx import dvsni
         self.sni = dvsni.NginxDvsni(config)
@@ -61,11 +60,6 @@ class DvsniPerformTest(util.NginxTest):
         shutil.rmtree(self.temp_dir)
         shutil.rmtree(self.config_dir)
         shutil.rmtree(self.work_dir)
-
-    def test_add_chall(self):
-        self.sni.add_chall(self.achalls[0], 0)
-        self.assertEqual(1, len(self.sni.achalls))
-        self.assertEqual([0], self.sni.indices)
 
     @mock.patch("letsencrypt_nginx.configurator"
                 ".NginxConfigurator.choose_vhost")
@@ -163,8 +157,8 @@ class DvsniPerformTest(util.NginxTest):
         root = self.sni.configurator.parser.loc["root"]
         self.sni.configurator.parser.parsed[root] = [['include', 'foo.conf']]
         # pylint: disable=protected-access
-        self.assertRaises(errors.LetsEncryptMisconfigurationError,
-                          self.sni._mod_config, [])
+        self.assertRaises(
+            errors.MisconfigurationError, self.sni._mod_config, [])
 
 if __name__ == "__main__":
     unittest.main()  # pragma: no cover

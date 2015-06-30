@@ -187,7 +187,7 @@ class ApacheParser(object):
         # validChars = re.compile("[a-zA-Z0-9.*?_-/]*")
         # matchObj = validChars.match(arg)
         # if matchObj.group() != arg:
-        #     logging.error("Error: Invalid regexp characters in %s", arg)
+        #     logger.error("Error: Invalid regexp characters in %s", arg)
         #     return []
 
         # Standardize the include argument based on server root
@@ -347,8 +347,7 @@ class ApacheParser(object):
             if os.path.isfile(os.path.join(self.root, name)):
                 return os.path.join(self.root, name)
 
-        raise errors.LetsEncryptNoInstallationError(
-            "Could not find configuration root")
+        raise errors.NoInstallationError("Could not find configuration root")
 
     def _set_user_config_file(self, root):
         """Set the appropriate user configuration file

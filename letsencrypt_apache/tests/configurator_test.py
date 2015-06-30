@@ -28,12 +28,11 @@ class TwoVhost80Test(util.ApacheTest):
     def setUp(self):
         super(TwoVhost80Test, self).setUp()
 
-        with mock.patch("letsencrypt_apache.configurator."
+        with mock.patch("letsencrypt_apache.configurator.ApacheConfigurator."
                         "mod_loaded") as mock_load:
             mock_load.return_value = True
             self.config = util.get_apache_configurator(
-                self.config_path, self.config_dir, self.work_dir,
-                self.ssl_options)
+                self.config_path, self.config_dir, self.work_dir)
 
         self.vh_truth = util.get_vh_truth(
             self.temp_dir, "debian_apache_2_4/two_vhost_80")
@@ -197,17 +196,14 @@ class TwoVhost80Test(util.ApacheTest):
 
         mock_popen().communicate.return_value = (
             "Server Version: Apache (Debian)", "")
-        self.assertRaises(
-            errors.LetsEncryptConfiguratorError, self.config.get_version)
+        self.assertRaises(errors.PluginError, self.config.get_version)
 
         mock_popen().communicate.return_value = (
             "Server Version: Apache/2.3{0} Apache/2.4.7".format(os.linesep), "")
-        self.assertRaises(
-            errors.LetsEncryptConfiguratorError, self.config.get_version)
+        self.assertRaises(errors.PluginError, self.config.get_version)
 
         mock_popen.side_effect = OSError("Can't find program")
-        self.assertRaises(
-            errors.LetsEncryptConfiguratorError, self.config.get_version)
+        self.assertRaises(errors.PluginError, self.config.get_version)
 
 
 if __name__ == "__main__":
